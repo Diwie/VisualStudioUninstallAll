@@ -58,7 +58,7 @@ $entries = @(
                 [string]$info.DisplayVersion -eq '17.9.34714'
             # Explicit user-requested exact-version filter, scoped to WOW6432Node only.
             $isOldWowVersion = $root -eq 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall' -and
-                [string]$info.DisplayVersion -eq '17.9.34714' -and
+                [string]$info.DisplayVersion -in @('17.9.34714', '17.9.34511') -and
                 $name -notmatch '2026'
             if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and -not $isOldMinShellX64 -and -not $isOldFileHandler -and -not $isOldFileHandlerAmd64 -and -not $isOldWowVersion -and
                 ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or
