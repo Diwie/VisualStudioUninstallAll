@@ -12,7 +12,11 @@ $roots = @(
     'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
 )
 function Get-MsiProductCode([string]$Command) {
-    if ($Command -match '(?i)^\s*(?:"[^"]*\\)?msiexec(?:\.exe)?"?|(?:[^\s"]*\\)?msiexec(?:\.exe)?)\s+(?:/[ix]\s*|/package\s+|/uninstall\s+)(\{[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\})') {
+    # Only accept msiexec commands, never arbitrary executable uninstall strings.
+    if ($Command -notmatch '(?i)^\s*(?:"[^"]*msiexec(?:\.exe)?"|(?:\S*\\)?msiexec(?:\.exe)?)\s+') {
+        return $null
+    }
+    if ($Command -match '(?i)(?:^|\s)/(?:x|i|uninstall|package)\s*(\{[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\})') {
         return $Matches[1].ToUpperInvariant()
     }
     return $null
