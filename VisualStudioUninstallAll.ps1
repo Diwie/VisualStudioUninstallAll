@@ -17,13 +17,21 @@ $legacyMsiKeys = @{
     'E7F6FA80B1E194041B980B1A900EEC50' = 'vs_vswebprotocolselectormsi'
     '07ECC0D64A38E8343874DFCDBC0568F8' = 'vs_githubprotocolhandlermsi'
 }
+$scriptDebugOldGuid = '{D56DC014-C4C1-4330-B32B-D9785DAE7BCB}'
+$scriptDebugPackedKey = '410CD65D1C4C03343BB29D87D5EAB7BC'
+$scriptDebugOldVersion = '17.0.125.0'
 $guidPattern = '^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$'
 $entries = @(
     foreach ($root in $roots) {
         foreach ($key in Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue) {
             $info = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
             $name = [string]$info.DisplayName
-            if ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or ($name -eq 'Microsoft Visual Studio Setup Configuration' -and [version]$info.DisplayVersion -ge [version]'4.8')) { continue }
+            $isOldScriptDebug = $name -eq 'VS Script Debugging Common' -and
+                $key.PSChildName -eq $scriptDebugOldGuid -and
+                [string]$info.DisplayVersion -eq $scriptDebugOldVersion
+            if (-not $isOldScriptDebug -and
+                ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or
+                ($name -eq 'Microsoft Visual Studio Setup Configuration' -and [version]$info.DisplayVersion -ge [version]'4.8'))) { continue }
             $command = [string]$info.UninstallString
             $productCode = $null
             if ($key.PSChildName -match $guidPattern -and $info.WindowsInstaller -eq 1) {
@@ -55,7 +63,10 @@ $msiEntries = @(
         $normalMatch = $name -match '(?i)Visual Studio' -and
             $name -notmatch '2026' -and
             $name -ne 'Microsoft Visual Studio Setup Configuration'
-        if ($legacyMatch -or $normalMatch) {
+        $scriptDebugMatch = $packedKey -eq $scriptDebugPackedKey -and
+            $name -eq 'VS Script Debugging Common' -and
+            [int64]$info.Version -eq 285212797
+        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch) {
             [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
         }
     }
