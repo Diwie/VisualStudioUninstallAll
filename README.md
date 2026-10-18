@@ -47,4 +47,4 @@ MSI verbose logs and `results.csv` are stored in `%TEMP%\VisualStudioUninstallAl
 
 ## License
 
-GPL-3.0-only; see [LICENSE](LICENSE).
+GPL-3.0-or-later; see [LICENSE](LICENSE).
