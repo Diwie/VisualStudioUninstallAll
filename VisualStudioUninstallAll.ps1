@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [switch]$Uninstall,
@@ -62,6 +62,7 @@ $msiEntries = @(
             [int64]$info.Version -eq 285837007
         $normalMatch = $name -match '(?i)Visual Studio' -and
             $name -notmatch '2026' -and
+<<<<<<< HEAD
             $name -notmatch '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)
             $name -eq 'VS Script Debugging Common' -and
             [int64]$info.Version -eq 285212797
@@ -155,6 +156,9 @@ if ($RegistryClean) {
 }
 Write-Warning 'Deleting internal MSI registration can affect repair and uninstall; this is not a complete Windows Installer database repair.'
 
+=======
+            $name -notmatch '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)$'
+>>>>>>> 478231b (Fix PowerShell syntax and protect current Visual Studio components)
         $scriptDebugMatch = $packedKey -eq $scriptDebugPackedKey -and
             $name -eq 'VS Script Debugging Common' -and
             [int64]$info.Version -eq 285212797
@@ -247,3 +251,4 @@ if ($RegistryClean) {
     }
 }
 Write-Warning 'Deleting internal MSI registration can affect repair and uninstall; this is not a complete Windows Installer database repair.'
+
