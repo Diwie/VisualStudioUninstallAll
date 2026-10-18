@@ -2,6 +2,7 @@
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
 param(
     [switch]$Uninstall,
+    [switch]$RemoveOrphanedRegistryEntries,
     [switch]$IncludeMauiAndVsPackages,
     [string]$LogDirectory = (Join-Path $env:TEMP 'VisualStudioUninstallAll')
 )
@@ -65,11 +66,11 @@ $packages = @(
 )
 $packages | Sort-Object Name | Format-Table Name,Version,ProductCode,Source -AutoSize
 Write-Host "Found $($packages.Count) matching product(s) across $($roots.Count) registry paths."
-if (-not $Uninstall) { Write-Host 'Preview only. Pass -Uninstall to attempt removal.'; return }
+if (-not $Uninstall -and -not $RemoveOrphanedRegistryEntries) { Write-Host 'Preview only. Pass -Uninstall or -RemoveOrphanedRegistryEntries to take action.'; return }
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Run PowerShell as Administrator.' }
 New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
-$results = foreach ($p in $packages) {
+$results = if ($Uninstall) { foreach ($p in $packages) {
     $guid = Get-MsiProductCode $p.UninstallString
     if (-not $guid) {
         Write-Warning "Skipped (no supported MSI uninstall command): $($p.Name)"
@@ -80,7 +81,7 @@ $results = foreach ($p in $packages) {
     $arguments = "/x $guid /qn /norestart /L*v " + '"' + $log + '"'
     $process = Start-Process -FilePath "$env:WINDIR\System32\msiexec.exe" -ArgumentList $arguments -PassThru -Wait
     [pscustomobject]@{Name=$p.Name;ProductCode=$guid;ExitCode=$process.ExitCode;Log=$log}
-}
+} }
 if ($results) {
     $report = Join-Path $LogDirectory 'results.csv'
     $results | Export-Csv -Path $report -NoTypeInformation -Encoding UTF8
@@ -88,3 +89,36 @@ if ($results) {
     Write-Host "Results: $report"
 }
 Write-Warning 'MSI errors 1603/1612/1714 may require missing installation media. No registry keys are deleted.'
+
+if ($RemoveOrphanedRegistryEntries) {
+    # Only machine-wide Add/Remove Programs entries; never modify Installer\UserData or Classes\Installer.
+    # A product must be explicitly absent from Windows Installer (ProductState=-1).
+    $installer = New-Object -ComObject WindowsInstaller.Installer
+    $candidates = @($found | Where-Object {
+        $_.Source -in @($roots[1], $roots[2]) -and
+        $_.Name -notmatch '(?i)Visual Studio (?:Community|Professional|Enterprise|Installer|Code)(?:\s|$)' -and
+        $_.ProductCode -and
+        $_.RegistryKey -match '^\{[0-9a-fA-F-]{36}\}$'
+    } | Sort-Object Source,RegistryKey -Unique)
+    foreach ($p in $candidates) {
+        $state = $null
+        try { $state = [int]$installer.ProductState($p.ProductCode) }
+        catch { Write-Warning "Cannot verify MSI state for $($p.Name): $($_.Exception.Message)"; continue }
+        if ($state -ne -1) {
+            Write-Host "Keeping $($p.Name): Windows Installer ProductState=$state (not proven orphaned)."
+            continue
+        }
+        $registryPath = Join-Path $p.Source $p.RegistryKey
+        if (-not (Test-Path -LiteralPath $registryPath)) { continue }
+        $nativePath = $registryPath -replace '^HKLM:\\','HKEY_LOCAL_MACHINE\'
+        $backup = Join-Path $LogDirectory ("registry-" + $p.ProductCode.Trim('{}') + ".reg")
+        if (-not $PSCmdlet.ShouldProcess($registryPath, 'Export registry backup and remove orphaned uninstall entry')) { continue }
+        & "$env:WINDIR\System32\reg.exe" export $nativePath $backup /y | Out-Null
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $backup)) {
+            Write-Warning "Backup failed, leaving registry entry unchanged: $registryPath"
+            continue
+        }
+        Remove-Item -LiteralPath $registryPath -Recurse -Force -ErrorAction Stop
+        Write-Host "Removed orphaned uninstall entry: $registryPath (backup: $backup)"
+    }
+}
