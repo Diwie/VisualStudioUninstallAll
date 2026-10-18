@@ -20,6 +20,9 @@ $legacyMsiKeys = @{
 $scriptDebugOldGuid = '{D56DC014-C4C1-4330-B32B-D9785DAE7BCB}'
 $scriptDebugPackedKey = '410CD65D1C4C03343BB29D87D5EAB7BC'
 $scriptDebugOldVersion = '17.0.125.0'
+$minShellOldGuid = '{621BEEFB-6EB5-4525-A73B-FFE906367055}'
+$minShellPackedKey = 'BFEEB1265BE652547AB3FF9E60630755'
+$minShellOldVersion = '17.9.34511'
 $guidPattern = '^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$'
 $entries = @(
     foreach ($root in $roots) {
@@ -29,7 +32,10 @@ $entries = @(
             $isOldScriptDebug = $name -eq 'VS Script Debugging Common' -and
                 $key.PSChildName -eq $scriptDebugOldGuid -and
                 [string]$info.DisplayVersion -eq $scriptDebugOldVersion
-            if (-not $isOldScriptDebug -and
+            $isOldMinShell = $name -eq 'vs_minshellmsires' -and
+                $key.PSChildName -eq $minShellOldGuid -and
+                [string]$info.DisplayVersion -eq $minShellOldVersion
+            if (-not $isOldScriptDebug -and -not $isOldMinShell -and
                 ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or
                 ($name -match '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)$' -and [version]$info.DisplayVersion -ge [version]'4.8'))) { continue }
             $command = [string]$info.UninstallString
@@ -66,7 +72,10 @@ $msiEntries = @(
         $scriptDebugMatch = $packedKey -eq $scriptDebugPackedKey -and
             $name -eq 'VS Script Debugging Common' -and
             [int64]$info.Version -eq 285212797
-        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch) {
+        $minShellMatch = $packedKey -eq $minShellPackedKey -and
+            $name -eq 'vs_minshellmsires' -and
+            [int64]$info.Version -eq 285837007
+        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch -or $minShellMatch) {
             [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
         }
     }
