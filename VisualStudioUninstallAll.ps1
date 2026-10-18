@@ -23,6 +23,8 @@ $scriptDebugOldVersion = '17.0.125.0'
 $minShellOldGuid = '{621BEEFB-6EB5-4525-A73B-FFE906367055}'
 $minShellPackedKey = 'BFEEB1265BE652547AB3FF9E60630755'
 $minShellOldVersion = '17.9.34511'
+$minShellSharedOldGuid = '{7E298CFB-5829-4903-98BA-F3F70E7CEB09}'
+$minShellSharedPackedKey = 'BFC892E79285309489AB3F7FE0C7BE90'
 $guidPattern = '^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$'
 $entries = @(
     foreach ($root in $roots) {
@@ -35,7 +37,10 @@ $entries = @(
             $isOldMinShell = $name -eq 'vs_minshellmsires' -and
                 $key.PSChildName -eq $minShellOldGuid -and
                 [string]$info.DisplayVersion -eq $minShellOldVersion
-            if (-not $isOldScriptDebug -and -not $isOldMinShell -and
+            $isOldMinShellShared = $name -eq 'vs_minshellsharedmsi' -and
+                $key.PSChildName -eq $minShellSharedOldGuid -and
+                [string]$info.DisplayVersion -eq $minShellOldVersion
+            if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and
                 ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or
                 ($name -match '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)$' -and [version]$info.DisplayVersion -ge [version]'4.8'))) { continue }
             $command = [string]$info.UninstallString
@@ -75,7 +80,10 @@ $msiEntries = @(
         $minShellMatch = $packedKey -eq $minShellPackedKey -and
             $name -eq 'vs_minshellmsires' -and
             [int64]$info.Version -eq 285837007
-        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch -or $minShellMatch) {
+        $minShellSharedMatch = $packedKey -eq $minShellSharedPackedKey -and
+            $name -eq 'vs_minshellsharedmsi' -and
+            [int64]$info.Version -eq 285837007
+        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch -or $minShellMatch -or $minShellSharedMatch) {
             [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
         }
     }
