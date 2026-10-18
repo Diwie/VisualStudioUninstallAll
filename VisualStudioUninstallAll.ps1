@@ -55,7 +55,11 @@ $entries = @(
             $isOldFileHandlerAmd64 = $name -eq 'vs_filehandler_amd64' -and
                 $key.PSChildName -eq $fileHandlerAmd64OldGuid -and
                 [string]$info.DisplayVersion -eq '17.9.34714'
-            if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and -not $isOldMinShellX64 -and -not $isOldFileHandler -and -not $isOldFileHandlerAmd64 -and
+            # Explicit user-requested exact-version filter, scoped to WOW6432Node only.
+            $isOldWowVersion = $root -eq 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall' -and
+                [string]$info.DisplayVersion -eq '17.9.34714' -and
+                $name -notmatch '2026'
+            if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and -not $isOldMinShellX64 -and -not $isOldFileHandler -and -not $isOldFileHandlerAmd64 -and -not $isOldWowVersion -and
                 ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or
                 ($name -match '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)$' -and [version]$info.DisplayVersion -ge [version]'4.8'))) { continue }
             $command = [string]$info.UninstallString
