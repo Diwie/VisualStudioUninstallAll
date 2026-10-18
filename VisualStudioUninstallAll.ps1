@@ -131,7 +131,7 @@ if (-not $admin -and -not $WhatIfPreference) { throw 'Run PowerShell as Administ
 if (-not $WhatIfPreference) { New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null }
 
 $fallbackCodes = @{}
-$successfulCodes = @(0, 1605, 1614, 3010)
+$successfulCodes = @(0, 1614, 3010)
 if ($Uninstall -or $UninstallThenClean) {
     $seen = @{}
     foreach ($item in $entries) {
@@ -143,12 +143,17 @@ if ($Uninstall -or $UninstallThenClean) {
             $arguments = '/x ' + $item.ProductCode + ' /qn /norestart /L*v "' + $log + '"'
             $process = Start-Process -FilePath "$env:WINDIR\System32\msiexec.exe" -ArgumentList $arguments -Wait -PassThru
             Write-Host "MSI exit $($process.ExitCode): $($item.Name) | $log"
-            if ($UninstallThenClean -and -not ($process.ExitCode -in $successfulCodes)) {
+            if ($UninstallThenClean -and $process.ExitCode -eq 1605) {
+                # MSI says product is absent; remove only its stale uninstall entry after backup.
+                $fallbackCodes[$item.ProductCode] = 'orphan'
+                Write-Warning "MSI product absent (1605): orphaned uninstall entry eligible for cleanup: $($item.Name)"
+            }
+            if ($UninstallThenClean -and -not ($process.ExitCode -in $successfulCodes) -and $process.ExitCode -ne 1605) {
                 $sourceMissing = $process.ExitCode -eq 1612 -or
                     ($process.ExitCode -eq 1603 -and (Test-Path -LiteralPath $log) -and
                         [bool](Select-String -LiteralPath $log -Pattern 'System Error 1612|Error 1714|SOURCEMGMT: Failed to resolve source' -Quiet))
                 if ($sourceMissing) {
-                    $fallbackCodes[$item.ProductCode] = $true
+                    $fallbackCodes[$item.ProductCode] = 'source'
                     Write-Warning "Missing MSI source: RegistryClean fallback eligible for $($item.Name)"
                 } else { Write-Warning "MSI exit $($process.ExitCode): no automatic registry cleanup for $($item.Name)" }
             }
@@ -184,7 +189,7 @@ if ($RegistryClean -or $UninstallThenClean) {
         if ($UninstallThenClean -and -not $RegistryClean) {
             # A registry entry is eligible only when its corresponding uninstall failed due to missing MSI source.
             $matching = @($entries | Where-Object { $_.Name -eq $item.Name -and $_.ProductCode -and $fallbackCodes.ContainsKey($_.ProductCode) })
-            if ($matching.Count -eq 0) { continue }
+            if (@($matching | Where-Object { $fallbackCodes[$_.ProductCode] -eq 'source' }).Count -eq 0) { continue }
         }
         $safeKey = Split-Path $item.NativePath -Leaf
         $backup = Join-Path $LogDirectory ("msi-registration-" + $safeKey + ".reg")
