@@ -34,6 +34,22 @@ $entries = @(
         }
     }
 )
+
+# Inspect Windows Installer product registrations separately. These are not
+# ordinary Add/Remove Programs entries and are never deleted by this script.
+$msiRegistryRoot = 'Registry::HKEY_CLASSES_ROOT\Installer\Products'
+$msiEntries = @(
+    foreach ($key in Get-ChildItem -LiteralPath $msiRegistryRoot -ErrorAction SilentlyContinue) {
+        $info = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
+        $name = [string]$info.ProductName
+        if ($name -match '(?i)Visual Studio' -and $name -notmatch '2026') {
+            [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
+        }
+    }
+)
+Write-Host "Windows Installer registrations matching the filter: $($msiEntries.Count)"
+$msiEntries | Format-Table Name,NativePath -AutoSize
+
 $entries | Sort-Object Name,RegistryPath | Format-Table Name,Version,ProductCode,RegistryPath -AutoSize
 Write-Host "Found $($entries.Count) uninstall registry entries (excluding names containing 2026)."
 if (-not $Uninstall -and -not $RegistryClean) {
@@ -81,6 +97,17 @@ if ($Uninstall) {
     }
 }
 if ($RegistryClean) {
+
+    # Export internal MSI product registrations for diagnosis; do not remove them.
+    foreach ($item in $msiEntries) {
+        $nameHash = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($item.NativePath)).GetHashCode()
+        $safeKey = Split-Path $item.NativePath -Leaf
+        $backup = Join-Path $LogDirectory ("msi-registration-" + $safeKey + ".reg")
+        if (-not $PSCmdlet.ShouldProcess($item.NativePath, "Export MSI registration backup to $backup (no deletion)")) { continue }
+        & "$env:WINDIR\System32\reg.exe" export $item.NativePath $backup /y | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warning "MSI registration backup failed: $($item.Name)" }
+        else { Write-Host "MSI registration saved: $backup" }
+    }
     foreach ($item in $entries) {
         $path = $item.RegistryPath
         if (-not (Test-Path -LiteralPath $path)) { continue }
