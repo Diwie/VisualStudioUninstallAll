@@ -1,0 +1,3 @@
+# PowerShell and local logs
+*.log
+results.csv
