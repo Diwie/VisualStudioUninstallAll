@@ -1,6 +1,6 @@
 # VisualStudioUninstallAll
 
-PowerShell utility to find and optionally uninstall Windows Installer (MSI) products registered under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products` whose `DisplayName` contains **Visual Studio**.
+PowerShell utility to find and optionally uninstall Windows Installer (MSI) products registered under `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products` and both Windows uninstall registry locations (including `WOW6432Node`) whose `DisplayName` contains **Visual Studio**. Duplicate MSI product codes are consolidated.
 
 For troubleshooting broken Visual Studio installations. **Independent community utility; not affiliated with Microsoft.** Back up your system before uninstalling. Read-only by default.
 
@@ -39,7 +39,8 @@ MSI verbose logs and `results.csv` are stored in `%TEMP%\VisualStudioUninstallAl
 
 ## Limitations
 
-- Only checks the SYSTEM (`S-1-5-18`) Windows Installer registry scope, not all per-user installations.
+- Checks SYSTEM (`S-1-5-18`) MSI entries and 64-bit/32-bit machine-wide uninstall entries; per-user installations are not covered.
+- Only recognized MSI uninstall commands are executed. Other EXE uninstallers are shown in the preview but skipped.
 - Does not remove all Visual Studio installer metadata.
 - Does not recover missing MSI caches. If the original source is unavailable, uninstall may fail with 1612 or 1714.
 - Packages that mention Visual Studio might be shared; always review the preview first.
