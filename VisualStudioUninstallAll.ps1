@@ -66,6 +66,7 @@ $entries = @(
                 $name -notmatch '2026'
             if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and -not $isOldMinShellX64 -and -not $isOldFileHandler -and -not $isOldFileHandlerAmd64 -and -not $isOldWowVersion -and -not $isOldVs17Component -and
                 ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or
+                ([string]$info.DisplayVersion -notmatch '^17\.' -and $name -notmatch '^(?i:Microsoft Visual Studio 20(?:17|19|22))') -or
                 ($name -match '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)$' -and [version]$info.DisplayVersion -ge [version]'4.8'))) { continue }
             $command = [string]$info.UninstallString
             $productCode = $null
