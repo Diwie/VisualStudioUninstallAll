@@ -10,6 +10,13 @@ $roots = @(
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
     'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
 )
+# Known legacy VS 17.10 MSI registrations (packed MSI product GUIDs).
+# Match both the key and product name to avoid selecting newer replacements.
+$legacyMsiKeys = @{
+    '3B552180DA46F284BBBC222E497BBE3D' = 'vs_vswebprotocolselectormsires'
+    'E7F6FA80B1E194041B980B1A900EEC50' = 'vs_vswebprotocolselectormsi'
+    '07ECC0D64A38E8343874DFCDBC0568F8' = 'vs_githubprotocolhandlermsi'
+}
 $guidPattern = '^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$'
 $entries = @(
     foreach ($root in $roots) {
@@ -35,14 +42,20 @@ $entries = @(
     }
 )
 
-# Inspect Windows Installer product registrations separately. These are not
-# ordinary Add/Remove Programs entries and are never deleted by this script.
+# Inspect internal MSI registrations, including three confirmed legacy VS packages.
 $msiRegistryRoot = 'Registry::HKEY_CLASSES_ROOT\Installer\Products'
 $msiEntries = @(
     foreach ($key in Get-ChildItem -LiteralPath $msiRegistryRoot -ErrorAction SilentlyContinue) {
         $info = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
         $name = [string]$info.ProductName
-        if ($name -match '(?i)Visual Studio' -and $name -notmatch '2026' -and $name -ne 'Microsoft Visual Studio Setup Configuration') {
+        $packedKey = $key.PSChildName.ToUpperInvariant()
+        $legacyMatch = $legacyMsiKeys.ContainsKey($packedKey) -and
+            $name -eq $legacyMsiKeys[$packedKey] -and
+            [int64]$info.Version -eq 285837007
+        $normalMatch = $name -match '(?i)Visual Studio' -and
+            $name -notmatch '2026' -and
+            $name -ne 'Microsoft Visual Studio Setup Configuration'
+        if ($legacyMatch -or $normalMatch) {
             [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
         }
     }
