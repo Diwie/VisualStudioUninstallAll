@@ -92,6 +92,7 @@ $msiEntries = @(
             $name -eq $legacyMsiKeys[$packedKey] -and
             [int64]$info.Version -eq 285837007
         $normalMatch = $name -match '(?i)Visual Studio' -and
+            (([int64]$info.Version -shr 24) -band 255) -eq 17 -and
             $name -notmatch '2026' -and
             $name -notmatch '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)$'
         $scriptDebugMatch = $packedKey -eq $scriptDebugPackedKey -and
@@ -121,7 +122,7 @@ $msiEntries = @(
             $name -in @('VS Immersive Activate Helper','VS JIT Debugger','VS Script Debugging Common','Xamarin Remoted iOS Simulator','Microsoft TestPlatform SDK Local Feed')
         $version17Match = $isVersion17 -and $vsComponentName
         if ($legacyMatch -or $normalMatch -or $scriptDebugMatch -or $minShellMatch -or $minShellSharedMatch -or $minShellX64Match -or $fileHandlerMatch -or $fileHandlerAmd64Match -or $version17Match) {
-            [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
+            [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name; MsiVersion = [int64]$info.Version }
         }
     }
 )
@@ -197,7 +198,11 @@ if ($RegistryClean -or $UninstallThenClean) {
         if ($UninstallThenClean -and -not $RegistryClean) {
             # A registry entry is eligible only when its corresponding uninstall failed due to missing MSI source.
             $matching = @($entries | Where-Object { $_.Name -eq $item.Name -and $_.ProductCode -and $fallbackCodes.ContainsKey($_.ProductCode) })
-            if (@($matching | Where-Object { $fallbackCodes[$_.ProductCode] -eq 'source' }).Count -eq 0) { continue }
+            $failedSource = @($matching | Where-Object { $fallbackCodes[$_.ProductCode] -eq 'source' }).Count -gt 0
+            # No uninstall entry remains: remove only explicitly recognized version-17 VS registrations.
+            $orphanInternal = @($entries | Where-Object { $_.Name -eq $item.Name }).Count -eq 0 -and
+                ((($item.MsiVersion -shr 24) -band 255) -eq 17)
+            if (-not $failedSource -and -not $orphanInternal) { continue }
         }
         $safeKey = Split-Path $item.NativePath -Leaf
         $backup = Join-Path $LogDirectory ("msi-registration-" + $safeKey + ".reg")
