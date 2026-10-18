@@ -62,7 +62,7 @@ $msiEntries = @(
             [int64]$info.Version -eq 285837007
         $normalMatch = $name -match '(?i)Visual Studio' -and
             $name -notmatch '2026' -and
-            $name -notmatch '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)        $scriptDebugMatch = $packedKey -eq $scriptDebugPackedKey -and
+            $name -notmatch '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)
             $name -eq 'VS Script Debugging Common' -and
             [int64]$info.Version -eq 285212797
         if ($legacyMatch -or $normalMatch -or $scriptDebugMatch) {
