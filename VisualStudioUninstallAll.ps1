@@ -3,6 +3,7 @@
 param(
     [switch]$Uninstall,
     [switch]$RemoveOrphanedRegistryEntries,
+    [switch]$CleanupLegacy,
     [switch]$IncludeMauiAndVsPackages,
     [string]$LogDirectory = (Join-Path $env:TEMP 'VisualStudioUninstallAll')
 )
@@ -66,7 +67,7 @@ $packages = @(
 )
 $packages | Sort-Object Name | Format-Table Name,Version,ProductCode,Source -AutoSize
 Write-Host "Found $($packages.Count) matching product(s) across $($roots.Count) registry paths."
-if (-not $Uninstall -and -not $RemoveOrphanedRegistryEntries) { Write-Host 'Preview only. Pass -Uninstall or -RemoveOrphanedRegistryEntries to take action.'; return }
+if (-not $Uninstall -and -not $RemoveOrphanedRegistryEntries -and -not $CleanupLegacy) { Write-Host 'Preview only. Pass -Uninstall or -RemoveOrphanedRegistryEntries to take action.'; return }
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Run PowerShell as Administrator.' }
 New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
@@ -121,4 +122,47 @@ if ($RemoveOrphanedRegistryEntries) {
         Remove-Item -LiteralPath $registryPath -Recurse -Force -ErrorAction Stop
         Write-Host "Removed orphaned uninstall entry: $registryPath (backup: $backup)"
     }
+}
+
+if ($CleanupLegacy) {
+    # Explicit year in product name, 2000..2025. Never infer age from DisplayVersion.
+    # Does not touch Windows Installer internal registry, and never targets 2026+.
+    $installer = New-Object -ComObject WindowsInstaller.Installer
+    $legacy = @($found | Where-Object {
+        $_.Name -match '(?i)\bVisual Studio\b' -and
+        $_.Name -match '\b20(?:0[0-9]|1[0-9]|2[0-5])\b' -and
+        $_.Name -notmatch '(?i)Visual Studio (?:Code|Installer|Community|Professional|Enterprise)(?:\s|$)' -and
+        $_.Source -in @($roots[1],$roots[2]) -and
+        $_.RegistryKey -match '^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$'
+    } | Sort-Object Source,RegistryKey -Unique)
+    foreach ($p in $legacy) {
+        $guid = $p.RegistryKey.ToUpperInvariant()
+        $state = $null
+        try { $state = [int]$installer.ProductState($guid) }
+        catch { Write-Warning "State check failed: $($p.Name): $($_.Exception.Message)"; continue }
+        if ($state -eq -1) {
+            $key = Join-Path $p.Source $p.RegistryKey
+            $native = $key -replace '^HKLM:\\','HKEY_LOCAL_MACHINE\'
+            $backup = Join-Path $LogDirectory ("legacy-" + $guid.Trim('{}') + ".reg")
+            if (-not $PSCmdlet.ShouldProcess($key, 'Back up and remove orphaned uninstall registry entry')) { continue }
+            & "$env:WINDIR\System32\reg.exe" export $native $backup /y | Out-Null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $backup)) {
+                Write-Warning "Backup failed; no deletion: $key"
+                continue
+            }
+            Remove-Item -LiteralPath $key -Recurse -Force
+            Write-Host "Removed orphaned entry: $($p.Name); backup: $backup"
+        }
+        elseif ($state -eq 5) {
+            if (-not $PSCmdlet.ShouldProcess("$($p.Name) ($guid)", 'Uninstall installed legacy MSI product')) { continue }
+            $log = Join-Path $LogDirectory ("legacy-" + $guid.Trim('{}') + ".log")
+            $arguments = "/x $guid /qn /norestart /L*v " + '"' + $log + '"'
+            $proc = Start-Process -FilePath "$env:WINDIR\System32\msiexec.exe" -ArgumentList $arguments -PassThru -Wait
+            Write-Host "Uninstall $($p.Name): exit $($proc.ExitCode); log: $log"
+        }
+        else {
+            Write-Warning "Keeping $($p.Name): ProductState=$state; no safe automated cleanup."
+        }
+    }
+    Write-Host "Legacy candidates with explicit pre-2026 year: $($legacy.Count)"
 }
