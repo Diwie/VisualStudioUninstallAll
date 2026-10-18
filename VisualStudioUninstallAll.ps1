@@ -3,6 +3,7 @@
 param(
     [switch]$Uninstall,
     [switch]$RegistryClean,
+    [switch]$UninstallThenClean,
     [string]$LogDirectory = (Join-Path $env:TEMP 'VisualStudioUninstallAll')
 )
 $ErrorActionPreference = 'Stop'
@@ -121,7 +122,7 @@ $msiEntries | Format-Table Name,NativePath -AutoSize
 
 $entries | Sort-Object Name,RegistryPath | Format-Table Name,Version,ProductCode,RegistryPath -AutoSize
 Write-Host "Found $($entries.Count) uninstall registry entries (excluding names containing 2026)."
-if (-not $Uninstall -and -not $RegistryClean) {
+if (-not $Uninstall -and -not $RegistryClean -and -not $UninstallThenClean) {
     Write-Host 'Preview only. Use -Uninstall or -RegistryClean; add -WhatIf to preview actions.'
     return
 }
@@ -129,7 +130,9 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 if (-not $admin -and -not $WhatIfPreference) { throw 'Run PowerShell as Administrator.' }
 if (-not $WhatIfPreference) { New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null }
 
-if ($Uninstall) {
+$fallbackCodes = @{}
+$successfulCodes = @(0, 1605, 1614, 3010)
+if ($Uninstall -or $UninstallThenClean) {
     $seen = @{}
     foreach ($item in $entries) {
         if ($item.ProductCode) {
@@ -140,6 +143,15 @@ if ($Uninstall) {
             $arguments = '/x ' + $item.ProductCode + ' /qn /norestart /L*v "' + $log + '"'
             $process = Start-Process -FilePath "$env:WINDIR\System32\msiexec.exe" -ArgumentList $arguments -Wait -PassThru
             Write-Host "MSI exit $($process.ExitCode): $($item.Name) | $log"
+            if ($UninstallThenClean -and -not ($process.ExitCode -in $successfulCodes)) {
+                $sourceMissing = $process.ExitCode -eq 1612 -or
+                    ($process.ExitCode -eq 1603 -and (Test-Path -LiteralPath $log) -and
+                        [bool](Select-String -LiteralPath $log -Pattern 'System Error 1612|Error 1714|SOURCEMGMT: Failed to resolve source' -Quiet))
+                if ($sourceMissing) {
+                    $fallbackCodes[$item.ProductCode] = $true
+                    Write-Warning "Missing MSI source: RegistryClean fallback eligible for $($item.Name)"
+                } else { Write-Warning "MSI exit $($process.ExitCode): no automatic registry cleanup for $($item.Name)" }
+            }
             continue
         }
         # Execute only directly parseable EXE commands, never cmd.exe, scripts or shell operators.
@@ -165,10 +177,15 @@ if ($Uninstall) {
         Write-Host "EXE exit $($process.ExitCode): $($item.Name)"
     }
 }
-if ($RegistryClean) {
+if ($RegistryClean -or $UninstallThenClean) {
 
     # Export MSI product registration before any explicitly confirmed removal.
     foreach ($item in $msiEntries) {
+        if ($UninstallThenClean -and -not $RegistryClean) {
+            # A registry entry is eligible only when its corresponding uninstall failed due to missing MSI source.
+            $matching = @($entries | Where-Object { $_.Name -eq $item.Name -and $_.ProductCode -and $fallbackCodes.ContainsKey($_.ProductCode) })
+            if ($matching.Count -eq 0) { continue }
+        }
         $safeKey = Split-Path $item.NativePath -Leaf
         $backup = Join-Path $LogDirectory ("msi-registration-" + $safeKey + ".reg")
         if (-not $PSCmdlet.ShouldProcess($item.NativePath, "Export MSI registration backup to $backup, then delete registry key")) { continue }
@@ -181,6 +198,8 @@ if ($RegistryClean) {
         }
     }
     foreach ($item in $entries) {
+        if ($UninstallThenClean -and -not $RegistryClean -and
+            (-not $item.ProductCode -or -not $fallbackCodes.ContainsKey($item.ProductCode))) { continue }
         $path = $item.RegistryPath
         if (-not (Test-Path -LiteralPath $path)) { continue }
         $native = $path -replace '^HKLM:\\','HKEY_LOCAL_MACHINE\'
