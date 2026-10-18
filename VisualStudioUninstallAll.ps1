@@ -29,6 +29,8 @@ $minShellX64OldGuid = '{072326E8-D76B-4137-8DAC-45D5D58777EF}'
 $minShellX64PackedKey = '8E623270B67D7314D8CA545D5D7877FE'
 $fileHandlerOldGuid = '{8F6810F6-45F1-4D41-9BE1-FE3828602B93}'
 $fileHandlerPackedKey = '6F0186F81F5414D4B91EEF838206B239'
+$fileHandlerAmd64OldGuid = '{377C68AC-F3B1-4B7F-B0F8-72446D60E99E}'
+$fileHandlerAmd64PackedKey = 'CA86C7731B3FF7B40B8F2744D6069EE9'
 $guidPattern = '^\{[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\}$'
 $entries = @(
     foreach ($root in $roots) {
@@ -50,7 +52,10 @@ $entries = @(
             $isOldFileHandler = $name -eq 'vs_filehandler_x86' -and
                 $key.PSChildName -eq $fileHandlerOldGuid -and
                 [string]$info.DisplayVersion -eq '17.9.34714'
-            if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and -not $isOldMinShellX64 -and -not $isOldFileHandler -and
+            $isOldFileHandlerAmd64 = $name -eq 'vs_filehandler_amd64' -and
+                $key.PSChildName -eq $fileHandlerAmd64OldGuid -and
+                [string]$info.DisplayVersion -eq '17.9.34714'
+            if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and -not $isOldMinShellX64 -and -not $isOldFileHandler -and -not $isOldFileHandlerAmd64 -and
                 ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or
                 ($name -match '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)$' -and [version]$info.DisplayVersion -ge [version]'4.8'))) { continue }
             $command = [string]$info.UninstallString
@@ -99,7 +104,10 @@ $msiEntries = @(
         $fileHandlerMatch = $packedKey -eq $fileHandlerPackedKey -and
             $name -eq 'vs_filehandler_x86' -and
             [int64]$info.Version -eq 285837210
-        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch -or $minShellMatch -or $minShellSharedMatch -or $minShellX64Match -or $fileHandlerMatch) {
+        $fileHandlerAmd64Match = $packedKey -eq $fileHandlerAmd64PackedKey -and
+            $name -eq 'vs_filehandler_amd64' -and
+            [int64]$info.Version -eq 285837210
+        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch -or $minShellMatch -or $minShellSharedMatch -or $minShellX64Match -or $fileHandlerMatch -or $fileHandlerAmd64Match) {
             [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
         }
     }
