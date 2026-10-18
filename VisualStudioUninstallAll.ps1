@@ -72,7 +72,11 @@ if ($Uninstall) {
             continue
         }
         if (-not $PSCmdlet.ShouldProcess($item.Name, "Run uninstaller: $exe $arguments")) { continue }
-        $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru
+        $startParams = @{ FilePath = $exe; Wait = $true; PassThru = $true }
+        if (-not [string]::IsNullOrWhiteSpace($arguments)) {
+            $startParams.ArgumentList = $arguments
+        }
+        $process = Start-Process @startParams
         Write-Host "EXE exit $($process.ExitCode): $($item.Name)"
     }
 }
