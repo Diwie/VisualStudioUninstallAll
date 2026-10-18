@@ -37,6 +37,27 @@ Uninstall the broader set without per-product confirmation (destructive; preview
 
 MSI verbose logs and `results.csv` are stored in `%TEMP%\VisualStudioUninstallAll`. Exit code 0 generally means success; 3010 means success with restart required.
 
+## Registry cleanup (advanced)
+
+The optional \`-RemoveOrphanedRegistryEntries\` switch removes **only** machine-wide
+Add/Remove Programs entries under the 64-bit and WOW6432Node Uninstall registry
+branches, and only when Windows Installer reports \`ProductState=-1\` (unknown product).
+Every selected key is exported as a \`.reg\` backup before deletion and requires
+confirmation. Products with state 1 (advertised) or 5 (installed), including
+the known Visual Studio Setup Configuration 3.9 case, are **not** deleted.
+Windows Installer's internal \`Installer\UserData\` and \`Classes\Installer\`
+databases are never modified.
+
+Preview first, then run from an elevated PowerShell prompt:
+
+\`\`\`powershell
+.\VisualStudioUninstallAll.ps1 -RemoveOrphanedRegistryEntries -WhatIf
+.\VisualStudioUninstallAll.ps1 -RemoveOrphanedRegistryEntries
+\`\`\`
+
+This is not a general MSI cache repair tool. Do not treat MSI error 1612 as proof
+that a product is orphaned.
+
 ## Limitations
 
 - Checks SYSTEM (`S-1-5-18`) MSI entries and 64-bit/32-bit machine-wide uninstall entries; per-user installations are not covered.
