@@ -112,7 +112,15 @@ $msiEntries = @(
         $fileHandlerAmd64Match = $packedKey -eq $fileHandlerAmd64PackedKey -and
             $name -eq 'vs_filehandler_amd64' -and
             [int64]$info.Version -eq 285837210
-        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch -or $minShellMatch -or $minShellSharedMatch -or $minShellX64Match -or $fileHandlerMatch -or $fileHandlerAmd64Match) {
+        # Generalized legacy Visual Studio MSI detection: major version 17 only.
+        # Restrict dotted/underscored names to known VS component families;
+        # a punctuation mark alone is not proof of Microsoft ownership.
+        $msiVersion = [int64]$info.Version
+        $isVersion17 = (($msiVersion -shr 24) -band 255) -eq 17
+        $vsComponentName = $name -match '^(?i:vs_|icecap_|DiagnosticsHub_|windows_toolscorepkg$|Microsoft\.iOS\.|Microsoft\.MacCatalyst\.|Microsoft\.NET\.Sdk\.(?:iOS|MacCatalyst|tvOS)\.)' -or
+            $name -in @('VS Immersive Activate Helper','VS JIT Debugger','VS Script Debugging Common','Xamarin Remoted iOS Simulator','Microsoft TestPlatform SDK Local Feed')
+        $version17Match = $isVersion17 -and $vsComponentName
+        if ($legacyMatch -or $normalMatch -or $scriptDebugMatch -or $minShellMatch -or $minShellSharedMatch -or $minShellX64Match -or $fileHandlerMatch -or $fileHandlerAmd64Match -or $version17Match) {
             [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
         }
     }
