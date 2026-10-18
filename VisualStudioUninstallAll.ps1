@@ -16,7 +16,7 @@ $entries = @(
         foreach ($key in Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue) {
             $info = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
             $name = [string]$info.DisplayName
-            if ($name -notmatch '(?i)Visual Studio' -or $name -match '2026') { continue }
+            if ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or ($name -eq 'Microsoft Visual Studio Setup Configuration' -and [version]$info.DisplayVersion -ge [version]'4.8')) { continue }
             $command = [string]$info.UninstallString
             $productCode = $null
             if ($key.PSChildName -match $guidPattern -and $info.WindowsInstaller -eq 1) {
@@ -42,7 +42,7 @@ $msiEntries = @(
     foreach ($key in Get-ChildItem -LiteralPath $msiRegistryRoot -ErrorAction SilentlyContinue) {
         $info = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
         $name = [string]$info.ProductName
-        if ($name -match '(?i)Visual Studio' -and $name -notmatch '2026') {
+        if ($name -match '(?i)Visual Studio' -and $name -notmatch '2026' -and $name -ne 'Microsoft Visual Studio Setup Configuration') {
             [pscustomobject]@{ Name = $name; RegistryPath = $key.PSPath; NativePath = $key.Name }
         }
     }
@@ -98,15 +98,18 @@ if ($Uninstall) {
 }
 if ($RegistryClean) {
 
-    # Export internal MSI product registrations for diagnosis; do not remove them.
+    # Export MSI product registration before any explicitly confirmed removal.
     foreach ($item in $msiEntries) {
-        $nameHash = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($item.NativePath)).GetHashCode()
         $safeKey = Split-Path $item.NativePath -Leaf
         $backup = Join-Path $LogDirectory ("msi-registration-" + $safeKey + ".reg")
-        if (-not $PSCmdlet.ShouldProcess($item.NativePath, "Export MSI registration backup to $backup (no deletion)")) { continue }
+        if (-not $PSCmdlet.ShouldProcess($item.NativePath, "Export MSI registration backup to $backup, then delete registry key")) { continue }
         & "$env:WINDIR\System32\reg.exe" export $item.NativePath $backup /y | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Warning "MSI registration backup failed: $($item.Name)" }
-        else { Write-Host "MSI registration saved: $backup" }
+        elseif (Test-Path -LiteralPath $backup) {
+            & "$env:WINDIR\System32\reg.exe" delete $item.NativePath /f | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Warning "Deletion failed: $($item.NativePath)" }
+            else { Write-Host "MSI registration removed: $($item.Name) | backup: $backup" }
+        }
     }
     foreach ($item in $entries) {
         $path = $item.RegistryPath
@@ -127,4 +130,4 @@ if ($RegistryClean) {
         Write-Host "Registry entry removed: $($item.Name) | backup: $backup"
     }
 }
-Write-Warning 'RegistryClean removes only Uninstall registry keys; it does not repair Windows Installer product registration or missing MSI sources.'
+Write-Warning 'Deleting internal MSI registration can affect repair and uninstall; this is not a complete Windows Installer database repair.'
