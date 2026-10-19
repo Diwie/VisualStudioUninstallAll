@@ -119,12 +119,12 @@ $brokenCrtMatch = (Test-Path -LiteralPath $brokenCrtPath) -and
     [string]$brokenCrtProps.DisplayName -eq 'Visual C++ Library CRT Appx Resource Package' -and
     [string]$brokenCrtProps.DisplayVersion -eq '14.39.33519' -and
     [string]$brokenCrtProps.UninstallString -match [regex]::Escape($brokenCrtProductGuid)
-if ($brokenCrtMatch -and @($userDataEntries | Where-Object { $_.NativePath -eq ('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\S-1-5-18\\Products\\' + $brokenCrtPackedKey) }).Count -eq 0) {
+if ($brokenCrtMatch -and @($userDataEntries | Where-Object { $_.NativePath -eq ('HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\' + $brokenCrtPackedKey) }).Count -eq 0) {
     $userDataEntries += [pscustomobject]@{
         Name = [string]$brokenCrtProps.DisplayName
         Version = [string]$brokenCrtProps.DisplayVersion
         RegistryPath = $brokenCrtPath
-        NativePath = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\S-1-5-18\\Products\\' + $brokenCrtPackedKey
+        NativePath = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\' + $brokenCrtPackedKey
     }
 }
 Write-Host "MSI UserData entries matching known legacy versions: $($userDataEntries.Count)"
