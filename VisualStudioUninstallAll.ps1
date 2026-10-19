@@ -58,7 +58,7 @@ $entries = @(
                 [string]$info.DisplayVersion -eq '17.9.34714'
             # Explicit user-requested exact-version filter, scoped to WOW6432Node only.
             $isOldWowVersion = $root -eq 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall' -and
-                [string]$info.DisplayVersion -in @('17.9.34714', '17.9.34511') -and
+                [string]$info.DisplayVersion -in @('17.9.34714', '17.9.34511', '14.39.33519') -and
                 $name -notmatch '2026'
             # Remaining legacy VS 2022 components can also be in the native 64-bit uninstall root.
             # Confirmed ClickOnce Bootstrapper orphan: VS 2026 setup error 1714 / MSI source 1612.
