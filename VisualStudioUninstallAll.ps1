@@ -108,6 +108,25 @@ $userDataEntries = @(
         }
     }
 )
+# Explicit orphan confirmed by Visual Studio MSI logs (1714, underlying 1612).
+# Its uninstall entry may be missing even though Windows Installer still registers the product.
+$brokenCrtPackedKey = 'C711BE283D8F28A4C88C20DA4D1D8B48'
+$brokenCrtProductGuid = '{82EB117C-F8D3-4A82-8CC8-02ADD4D1B884}'
+$brokenCrtPath = Join-Path $userDataRoot $brokenCrtPackedKey
+$brokenCrtProps = Get-ItemProperty -LiteralPath (Join-Path $brokenCrtPath 'InstallProperties') -ErrorAction SilentlyContinue
+$brokenCrtMatch = (Test-Path -LiteralPath $brokenCrtPath) -and
+    $null -ne $brokenCrtProps -and
+    [string]$brokenCrtProps.DisplayName -eq 'Visual C++ Library CRT Appx Resource Package' -and
+    [string]$brokenCrtProps.DisplayVersion -eq '14.39.33519' -and
+    [string]$brokenCrtProps.UninstallString -match [regex]::Escape($brokenCrtProductGuid)
+if ($brokenCrtMatch -and @($userDataEntries | Where-Object { $_.NativePath -eq ('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\S-1-5-18\\Products\\' + $brokenCrtPackedKey) }).Count -eq 0) {
+    $userDataEntries += [pscustomobject]@{
+        Name = [string]$brokenCrtProps.DisplayName
+        Version = [string]$brokenCrtProps.DisplayVersion
+        RegistryPath = $brokenCrtPath
+        NativePath = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\S-1-5-18\\Products\\' + $brokenCrtPackedKey
+    }
+}
 Write-Host "MSI UserData entries matching known legacy versions: $($userDataEntries.Count)"
 $userDataEntries | Format-Table Name,Version,NativePath -AutoSize
 
@@ -225,8 +244,10 @@ if ($RegistryClean -or $UninstallThenClean) {
     # Version-based internal MSI UserData removal is explicit only for -RegistryClean.
     # -UninstallThenClean requires evidence of a failed MSI uninstall; avoid deleting
     # healthy products merely because their version matches a legacy version.
-    if ($RegistryClean) {
+    if ($RegistryClean -or ($UninstallThenClean -and $brokenCrtMatch)) {
         foreach ($item in $userDataEntries) {
+            # Automatic combined mode only addresses the exact confirmed broken CRT registration.
+            if (-not $RegistryClean -and (Split-Path $item.NativePath -Leaf) -ne $brokenCrtPackedKey) { continue }
             $safeKey = Split-Path $item.NativePath -Leaf
             $backup = Join-Path $LogDirectory ("userdata-" + $safeKey + ".reg")
             if (-not $PSCmdlet.ShouldProcess($item.NativePath, "Export UserData registration to $backup, then delete exact-version key")) { continue }
