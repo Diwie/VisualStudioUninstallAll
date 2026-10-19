@@ -89,6 +89,28 @@ $entries = @(
     }
 )
 
+# Explicitly requested legacy versions for MSI UserData registrations.
+# DisplayVersion is stored in each product's InstallProperties subkey.
+$legacyUserDataVersions = @('14.39.33519', '17.9.34511', '17.9.34714')
+$userDataRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products'
+$userDataEntries = @(
+    foreach ($key in Get-ChildItem -LiteralPath $userDataRoot -ErrorAction SilentlyContinue) {
+        $props = Get-ItemProperty -LiteralPath (Join-Path $key.PSPath 'InstallProperties') -ErrorAction SilentlyContinue
+        if (-not $props) { continue }
+        $version = [string]$props.DisplayVersion
+        $name = [string]$props.DisplayName
+        if ($version -notin $legacyUserDataVersions -or $name -match '2026') { continue }
+        [pscustomobject]@{
+            Name = $name
+            Version = $version
+            RegistryPath = $key.PSPath
+            NativePath = $key.Name
+        }
+    }
+)
+Write-Host "MSI UserData entries matching known legacy versions: $($userDataEntries.Count)"
+$userDataEntries | Format-Table Name,Version,NativePath -AutoSize
+
 # Inspect internal MSI registrations, including three confirmed legacy VS packages.
 $msiRegistryRoot = 'Registry::HKEY_CLASSES_ROOT\Installer\Products'
 $msiEntries = @(
@@ -200,6 +222,24 @@ if ($Uninstall -or $UninstallThenClean) {
     }
 }
 if ($RegistryClean -or $UninstallThenClean) {
+    # Version-based internal MSI UserData removal is explicit only for -RegistryClean.
+    # -UninstallThenClean requires evidence of a failed MSI uninstall; avoid deleting
+    # healthy products merely because their version matches a legacy version.
+    if ($RegistryClean) {
+        foreach ($item in $userDataEntries) {
+            $safeKey = Split-Path $item.NativePath -Leaf
+            $backup = Join-Path $LogDirectory ("userdata-" + $safeKey + ".reg")
+            if (-not $PSCmdlet.ShouldProcess($item.NativePath, "Export UserData registration to $backup, then delete exact-version key")) { continue }
+            & "$env:WINDIR\System32\reg.exe" export $item.NativePath $backup /y | Out-Null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $backup)) {
+                Write-Warning "UserData backup failed; retained: $($item.NativePath)"
+                continue
+            }
+            & "$env:WINDIR\System32\reg.exe" delete $item.NativePath /f | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Warning "UserData deletion failed: $($item.NativePath)" }
+            else { Write-Host "UserData registration removed: $($item.Name) ($($item.Version)) | backup: $backup" }
+        }
+    }
 
     # Export MSI product registration before any explicitly confirmed removal.
     foreach ($item in $msiEntries) {
