@@ -105,6 +105,7 @@ $userDataEntries = @(
             Version = $version
             RegistryPath = $key.PSPath
             NativePath = $key.Name
+            ProductCode = if ([string]$props.UninstallString -match '\{[0-9A-Fa-f-]{36}\}') { $Matches[0].ToUpperInvariant() } else { $null }
         }
     }
 )
@@ -125,6 +126,7 @@ if ($brokenCrtMatch -and @($userDataEntries | Where-Object { $_.NativePath -eq (
         Version = [string]$brokenCrtProps.DisplayVersion
         RegistryPath = $brokenCrtPath
         NativePath = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\' + $brokenCrtPackedKey
+        ProductCode = $brokenCrtProductGuid
     }
 }
 Write-Host "MSI UserData entries matching known legacy versions: $($userDataEntries.Count)"
@@ -240,14 +242,36 @@ if ($Uninstall -or $UninstallThenClean) {
         Write-Host "EXE exit $($process.ExitCode): $($item.Name)"
     }
 }
+# For internal MSI registrations without a normal Uninstall key, attempt uninstall first.
+# Record failure before allowing any automatic fallback deletion.
+$userDataFailedCodes = @{}
+if ($UninstallThenClean) {
+    foreach ($item in $userDataEntries) {
+        if (-not $item.ProductCode -or $seen.ContainsKey($item.ProductCode)) { continue }
+        $seen[$item.ProductCode] = $true
+        if (-not $PSCmdlet.ShouldProcess("$($item.Name) ($($item.ProductCode))", 'Uninstall orphaned MSI product')) { continue }
+        $log = Join-Path $LogDirectory ("userdata-msi-" + $item.ProductCode.Trim('{}') + '.log')
+        $arguments = '/x ' + $item.ProductCode + ' /qn /norestart /L*v "' + $log + '"'
+        $process = Start-Process -FilePath "$env:WINDIR\System32\msiexec.exe" -ArgumentList $arguments -Wait -PassThru
+        Write-Host "UserData MSI exit $($process.ExitCode): $($item.Name) | $log"
+        if ($process.ExitCode -in @(1605,1612,1614)) {
+            $userDataFailedCodes[$item.ProductCode] = $process.ExitCode
+        } elseif ($process.ExitCode -eq 1603 -and (Test-Path -LiteralPath $log) -and
+            [bool](Select-String -LiteralPath $log -Pattern 'System Error 1612|Error 1714|SOURCEMGMT: Failed to resolve source' -Quiet)) {
+            $userDataFailedCodes[$item.ProductCode] = $process.ExitCode
+        }
+    }
+}
 if ($RegistryClean -or $UninstallThenClean) {
     # Version-based internal MSI UserData removal is explicit only for -RegistryClean.
     # -UninstallThenClean requires evidence of a failed MSI uninstall; avoid deleting
     # healthy products merely because their version matches a legacy version.
-    if ($RegistryClean -or ($UninstallThenClean -and $brokenCrtMatch)) {
+    if ($RegistryClean -or $UninstallThenClean) {
         foreach ($item in $userDataEntries) {
-            # Automatic combined mode only addresses the exact confirmed broken CRT registration.
-            if (-not $RegistryClean -and (Split-Path $item.NativePath -Leaf) -ne $brokenCrtPackedKey) { continue }
+            # Combined mode cleans only registrations whose uninstall attempt failed with
+            # a known missing-product/source code, never all matching versions blindly.
+            if ($UninstallThenClean -and -not $RegistryClean -and
+                (-not $item.ProductCode -or -not $userDataFailedCodes.ContainsKey($item.ProductCode))) { continue }
             $safeKey = Split-Path $item.NativePath -Leaf
             $backup = Join-Path $LogDirectory ("userdata-" + $safeKey + ".reg")
             if (-not $PSCmdlet.ShouldProcess($item.NativePath, "Export UserData registration to $backup, then delete exact-version key")) { continue }
