@@ -61,10 +61,13 @@ $entries = @(
                 [string]$info.DisplayVersion -in @('17.9.34714', '17.9.34511') -and
                 $name -notmatch '2026'
             # Remaining legacy VS 2022 components can also be in the native 64-bit uninstall root.
+            # Confirmed ClickOnce Bootstrapper orphan: VS 2026 setup error 1714 / MSI source 1612.
+            $isBrokenClickOnce = $key.PSChildName -eq '{22E13608-4DB0-4977-A267-3AAFA09CD54A}' -and
+                $name -eq 'ClickOnce Bootstrapper Package for Microsoft .NET Framework'
             $isOldVs17Component = [string]$info.DisplayVersion -in @('17.9.34511', '17.9.34714') -and
                 $name -match '^(?i:vs_|icecap_)' -and
                 $name -notmatch '2026'
-            if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and -not $isOldMinShellX64 -and -not $isOldFileHandler -and -not $isOldFileHandlerAmd64 -and -not $isOldWowVersion -and -not $isOldVs17Component -and
+            if (-not $isOldScriptDebug -and -not $isOldMinShell -and -not $isOldMinShellShared -and -not $isOldMinShellX64 -and -not $isOldFileHandler -and -not $isOldFileHandlerAmd64 -and -not $isOldWowVersion -and -not $isOldVs17Component -and -not $isBrokenClickOnce -and
                 ($name -notmatch '(?i)Visual Studio' -or $name -match '2026' -or
                 ([string]$info.DisplayVersion -notmatch '^17\.' -and $name -notmatch '^(?i:Microsoft Visual Studio 20(?:17|19|22))') -or
                 ($name -match '^Microsoft Visual Studio Setup (?:Configuration|WMI Provider)$' -and [version]$info.DisplayVersion -ge [version]'4.8'))) { continue }
